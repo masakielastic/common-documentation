@@ -1,0 +1,141 @@
+Doctrine Common のアノテーションライブラリは [Doctrine2 ORM](http://www.doctrine-project.org/projects/orm)
+のニーズから生まれ、プロパティとメソッドにおいて、クラスファイルに埋め込まれたメタデータとして情報をマッピングすることができるようになります。このライブラリは独立しており、 DocBlock アノテーションを実装するために独自のライブラリで使うことができます。
+++ コンフィギュレーションをセットアップする
+
+アノテーションクラスを使う方法はシンプルで、必要なのは `AnnotationReader` インスタンスを作ることだけです。
+
+    [php]
+    $reader = new \Doctrine\Common\Annotations\AnnotationReader();
+
+`AnnotationReader` クラスはコンストラクタのオプション引数を2つとります。
+
+ * **Doctrine\Common\Cache\Cache $cache** - 読み込んだアノテーションをキャッシュするために使うキャッシュドライバ
+ * **Doctrine\Common\Annotations\Parser $parser** - DocBlock アノテーションをパースするために使うアノテーションパーサークラス
+
+つぎのようにより細かいコントロールができます。
+
+    [php]
+    $reader = new \Doctrine\Common\Annotations\AnnotationReader(
+        new \Doctrine\Common\Cache\ApcCache(),
+        new \Doctrine\Common\Annotations\Parser()
+    );
+
++++ アノテーションクラスをオートロードする
+
+`class_exists()` 関数で Doctrine に アノテーションクラスをオートロードさせたいのであれば、`AnnotationReader` インスタンスのコンフィギュレーションをつぎのように変更する必要があります。
+
+    [php]
+    $reader->setAutoloadAnnotationClasses(true);
+
+このプロパティに false がセットされているとすべてのアノテーションクラスはあらかじめ手動でロードしなければなりません。
+
++++ デフォルトの名前空間
+
+完全修飾クラス名で指定したくなければ、`setDefaultAnnotationNamespace()` メソッドを使ってデフォルトの名前空間をセットすることができます。つぎの例ではアノテーションの完全修飾クラス名を指定しています。
+
+
+    [php]
+    /** @MyCompany\Annotations\Foo */
+    class Test
+    {
+    }
+
+上記のコードを短くするためにデフォルトの名前空間を `MyCompany\Annotations` に定めることができます。
+
+    [php]
+    $reader->setDefaultAnnotationNamespace('MyCompany\Annotations\\');
+
+Now it can look something like:
+
+    [php]
+    /** @Foo */
+    class Test
+    {
+    }
+
+少し見ためがよくなりましたね！
+
++++ 名前空間のエイリアス
+
+完全修飾クラス名を指定しなくてすむようにするほかの方法として、アノテーションクラスの名前空間にエイリアスを用意する方法があります。
+
+    [php]
+    $reader->setAnnotationNamespaceAlias('MyCompany\Annotations\\', 'my');
+
+これでつぎのように書くことができます。
+
+    [php]
+    /** @my:Foo */
+    class Test
+    {
+    }
+
+繰り返しますが、完全修飾クラス名よりも少し見た目がよくなりました！
+
++++ アノテーションの作成
+
+アノテーションオブジェクトの作成プロセスをカスタマイズしたいのであれば、2つの選択肢があります。1つめは `Doctrine\Common\Annotations\Parser` クラスのサブクラスを作り、`newAnnotation()` メソッドをオーバーライドします。
+
+    [php]
+    class MyParser extends Parser
+    {
+        protected function newAnnotation($name, array $values)
+        {
+            return new $name($values);
+        }
+    }
+
+もう１つのオプションは実行するクロージャを指定するために `setAnnotationCreationFunction()` メソッドを使うことです。
+
+    [php]
+    $reader->setAnnotationCreationFunction(function($name, array $values) {
+        return new $name($values);
+    });
+
+++ 使いかた
+
+ライブラリの API の使いかたはシンプルです。最初にアノテーションクラスをいくつか定義してみましょう。
+
+    [php]
+    namespace MyCompany\Annotations;
+    
+    class Foo extends \Doctrine\Common\Annotations\Annotation
+    {
+        public $bar;
+    }
+
+    class Bar
+    {
+        public $foo;
+    }
+
+これでアノテーションを使うには、つぎのように書くだけです。
+
+    [php]
+    /**
+     * @Foo(bar="foo")
+     * @Bar(foo="bar")
+     */
+    class User
+    {
+    }
+
+これで、上記のアノテーションを得るスクリプトをつぎのように書くことができます。
+
+    [php]
+    $reflClass = new ReflectionClass('User');
+    $classAnnotations = $reader->getClassAnnotations($reflClass);
+    echo $classAnnotations['MyCompany\Annotations\Foo']->bar; // prints foo
+    echo $classAnnotations['MyCompany\Annotations\Foo']->foo; // prints bar
+
+クラス、プロパティもしくはメソッドの DocBlock からアノテーションオブジェクトを読みとるための完全な API はつぎのとおりです。
+
+ * getClassAnnotations(ReflectionClass $class)
+ * getClassAnnotation(ReflectionClass $class, $annotation)
+ * getPropertyAnnotations(ReflectionProperty $property)
+ * getPropertyAnnotation(ReflectionProperty $property, $annotation)
+ * getMethodAnnotations(ReflectionMethod $method)
+ * getMethodAnnotation(ReflectionMethod $method, $annotation)
+
+> **CAUTION**
+> AnnotationReader は DocBlock のすべてのアノテーションが一度に処理されることを前提に動きます。このことが意味するのは存在せずロードされておらず　(`setAutoloadAnnotationClasses()` メソッドを使って) オートロードできないアノテーションクラスはけっして可視化されるようにはならず、アクセスできないということです。キャッシュがクリアされ、そのときにすべてのアノテーションが定義されている状況のなかでアノテーションが再びリクエストされないかぎりにおいてキャッシュが使われていれば、アクセスできないということです。
